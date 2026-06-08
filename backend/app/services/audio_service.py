@@ -71,7 +71,7 @@ def levenshtein(a: str, b: str) -> int:
     return prev[-1]
 
 
-def matches(target: str, transcript: str, max_edits: int = 2) -> bool:
+def _try_match(target: str, transcript: str, max_edits: int) -> bool:
     target_norm = normalize(target)
     if not target_norm:
         return False
@@ -88,6 +88,21 @@ def matches(target: str, transcript: str, max_edits: int = 2) -> bool:
     for word in transcript.split():
         if levenshtein(target_norm, normalize(word)) <= threshold:
             return True
+    return False
+
+
+def matches(
+    target: str,
+    transcript: str,
+    max_edits: int = 2,
+    alt_targets: Optional[list] = None,
+) -> bool:
+    if _try_match(target, transcript, max_edits):
+        return True
+    if alt_targets:
+        for alt in alt_targets:
+            if alt and _try_match(alt, transcript, max_edits):
+                return True
     return False
 
 

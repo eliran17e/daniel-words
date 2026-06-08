@@ -7,7 +7,7 @@ from app.config import ENABLE_UPLOADS
 from app.database import get_db
 from app.models import AttemptLog, Word
 from app.schemas import EvaluationResponse, HealthResponse, ServerCapabilities
-from app.services import audio_service
+from app.services import audio_service, emoji_service
 
 router = APIRouter(prefix="/api", tags=["Audio Evaluation"])
 
@@ -46,7 +46,10 @@ async def evaluate_audio(
         audio_bytes, suffix, language=target_language
     )
 
-    is_correct = audio_service.matches(target_word, transcript)
+    other_lang = "he" if target_language == "en" else "en"
+    counterpart = emoji_service.translate(target_word, target_language, other_lang)
+    alt_targets = [counterpart] if counterpart else []
+    is_correct = audio_service.matches(target_word, transcript, alt_targets=alt_targets)
 
     word = (
         db.query(Word)
