@@ -18,6 +18,9 @@ yarn-error.log*
 .env.local
 .env.*.local
 
+# Uploaded user images
+backend/uploads/
+
 # Editor / OS
 .idea/
 .vscode/

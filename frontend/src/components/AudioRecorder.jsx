@@ -1,9 +1,38 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import { AnimatePresence, motion } from "framer-motion";
+import { Link } from "react-router-dom";
+import { resolveImageUrl } from "./EditVisualModal";
 
-const API_URL =
-  process.env.REACT_APP_API_URL || "http://localhost:8000/api/evaluate-audio";
+const API_BASE =
+  process.env.REACT_APP_API_BASE || "http://localhost:8000/api";
+const EVAL_URL = `${API_BASE}/evaluate-audio`;
+const WORDS_URL = `${API_BASE}/words`;
+
+function CurrentVisual({ word }) {
+  const img = resolveImageUrl(API_BASE, word.image_url);
+  if (word.emoji) {
+    return (
+      <span className="text-8xl sm:text-9xl select-none drop-shadow-md" aria-hidden>
+        {word.emoji}
+      </span>
+    );
+  }
+  if (img) {
+    return (
+      <img
+        src={img}
+        alt={word.word}
+        className="w-40 h-40 sm:w-48 sm:h-48 object-cover rounded-3xl shadow-md"
+      />
+    );
+  }
+  return (
+    <span className="text-8xl sm:text-9xl select-none drop-shadow-md" aria-hidden>
+      ❓
+    </span>
+  );
+}
 
 const STATUS = {
   IDLE: "idle",
@@ -12,7 +41,10 @@ const STATUS = {
   SUCCESS: "success",
   RETRY: "retry",
   ERROR: "error",
+  MIC_BLOCKED: "mic_blocked",
 };
+
+const SESSION_SIZE = 10;
 
 const I18N = {
   en: {
@@ -24,12 +56,23 @@ const I18N = {
     retry: "Close! Let's try again",
     silence: "I didn't hear that — try again!",
     micPerm: "Please allow the microphone to play",
+    micBlocked: "Microphone is blocked 🔒",
+    micBlockedHint:
+      "Click the 🔒 icon next to the URL → Microphone → Allow → refresh the page.",
+    micMissing: "No microphone found — connect one and refresh",
+    micBusy: "Mic is in use by another app — close it and try again",
     serverErr: "Hmm — something hiccuped",
     next: "Next →",
     again: "Try Again",
     skip: "Skip",
     micLabel: "Hold to speak",
     swap: "עברית",
+    loading: "Loading words…",
+    empty: "No words yet — ask a grown-up to add some!",
+    roundDone: "Round Complete!",
+    roundDoneSub: "You finished all your words!",
+    playMore: "Play 10 More 🎉",
+    heardPrefix: "I heard:",
   },
   he: {
     title: "אומרים את המילה!",
@@ -40,52 +83,84 @@ const I18N = {
     retry: "כמעט! בואו ננסה שוב",
     silence: "לא שמעתי — נסו שוב",
     micPerm: "צריך הרשאה למיקרופון",
+    micBlocked: "המיקרופון חסום 🔒",
+    micBlockedHint:
+      "לחצו על סמל המנעול 🔒 ליד הכתובת → מיקרופון → אפשרו → רעננו את הדף.",
+    micMissing: "לא נמצא מיקרופון — חברו אחד ורעננו",
+    micBusy: "המיקרופון בשימוש על ידי תוכנה אחרת",
     serverErr: "אופס — קרתה תקלה",
     next: "→ הבא",
     again: "ננסה שוב",
     skip: "דלג",
     micLabel: "לחצו והחזיקו כדי לדבר",
     swap: "EN",
+    loading: "טוען מילים…",
+    empty: "אין עדיין מילים — ביקשו ממבוגר להוסיף",
+    roundDone: "סיימתם את הסבב!",
+    roundDoneSub: "ענית על כל המילים!",
+    playMore: "עוד 10 מילים 🎉",
+    heardPrefix: "שמעתי:",
   },
 };
 
-const DECK = {
-  en: [
-    { word: "apple", emoji: "🍎" },
-    { word: "banana", emoji: "🍌" },
-    { word: "dog", emoji: "🐶" },
-    { word: "cat", emoji: "🐱" },
-    { word: "star", emoji: "⭐" },
-    { word: "sun", emoji: "☀️" },
-    { word: "moon", emoji: "🌙" },
-    { word: "fish", emoji: "🐟" },
-  ],
-  he: [
-    { word: "תפוח", emoji: "🍎" },
-    { word: "בננה", emoji: "🍌" },
-    { word: "כלב", emoji: "🐶" },
-    { word: "חתול", emoji: "🐱" },
-    { word: "כוכב", emoji: "⭐" },
-    { word: "שמש", emoji: "☀️" },
-    { word: "ירח", emoji: "🌙" },
-    { word: "דג", emoji: "🐟" },
-  ],
-};
+function shuffle(arr) {
+  const out = [...arr];
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
 
 export default function AudioRecorder() {
   const [lang, setLang] = useState("en");
+  const [allWords, setAllWords] = useState([]);
+  const [wordsLoading, setWordsLoading] = useState(true);
+  const [wordsError, setWordsError] = useState(false);
+  const [sessionDeck, setSessionDeck] = useState([]);
   const [index, setIndex] = useState(0);
   const [status, setStatus] = useState(STATUS.IDLE);
   const [feedback, setFeedback] = useState("");
+  const [heard, setHeard] = useState("");
 
   const mediaRecorderRef = useRef(null);
   const chunksRef = useRef([]);
   const streamRef = useRef(null);
 
   const t = I18N[lang];
-  const deck = DECK[lang];
-  const current = deck[index % deck.length];
   const dir = lang === "he" ? "rtl" : "ltr";
+
+  const fullDeck = useMemo(
+    () => allWords.filter((w) => w.language === lang),
+    [allWords, lang]
+  );
+  const sessionComplete =
+    sessionDeck.length > 0 && index >= sessionDeck.length;
+  const current = sessionComplete ? null : sessionDeck[index] ?? null;
+  const isHebrew = lang === "he";
+
+  useEffect(() => {
+    let cancelled = false;
+    setWordsLoading(true);
+    axios
+      .get(WORDS_URL, { timeout: 10000 })
+      .then(({ data }) => {
+        if (cancelled) return;
+        setAllWords(Array.isArray(data) ? data : []);
+        setWordsError(false);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        console.error("failed to load words", err);
+        setWordsError(true);
+      })
+      .finally(() => {
+        if (!cancelled) setWordsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -98,17 +173,31 @@ export default function AudioRecorder() {
   const reset = useCallback(() => {
     setStatus(STATUS.IDLE);
     setFeedback("");
+    setHeard("");
   }, []);
 
+  const startNewRound = useCallback(() => {
+    const selected = fullDeck.filter((w) => w.is_selected);
+    const pool = selected.length > 0 ? selected : fullDeck;
+    setSessionDeck(shuffle(pool).slice(0, SESSION_SIZE));
+    setIndex(0);
+    setStatus(STATUS.IDLE);
+    setFeedback("");
+    setHeard("");
+  }, [fullDeck]);
+
+  useEffect(() => {
+    startNewRound();
+  }, [startNewRound]);
+
   const nextWord = useCallback(() => {
-    setIndex((i) => (i + 1) % deck.length);
+    if (sessionDeck.length === 0) return;
+    setIndex((i) => i + 1);
     reset();
-  }, [deck.length, reset]);
+  }, [sessionDeck.length, reset]);
 
   const swapLang = () => {
     setLang((l) => (l === "en" ? "he" : "en"));
-    setIndex(0);
-    reset();
   };
 
   const stopStream = useCallback(() => {
@@ -120,6 +209,7 @@ export default function AudioRecorder() {
 
   const uploadBlob = useCallback(
     async (blob) => {
+      if (!current) return;
       setStatus(STATUS.UPLOADING);
       setFeedback(t.thinking);
       try {
@@ -128,15 +218,18 @@ export default function AudioRecorder() {
         form.append("target_word", current.word);
         form.append("target_language", lang);
 
-        const { data } = await axios.post(API_URL, form, {
+        const { data } = await axios.post(EVAL_URL, form, {
           headers: { "Content-Type": "multipart/form-data" },
           timeout: 30000,
         });
 
+        const transcript = (data.transcript || "").trim();
+        setHeard(transcript);
+
         if (data.is_correct) {
           setStatus(STATUS.SUCCESS);
           setFeedback(t.success);
-        } else if (!data.transcript) {
+        } else if (!transcript) {
           setStatus(STATUS.RETRY);
           setFeedback(t.silence);
         } else {
@@ -149,10 +242,11 @@ export default function AudioRecorder() {
         setFeedback(t.serverErr);
       }
     },
-    [current.word, lang, t]
+    [current, lang, t]
   );
 
   const startRecording = useCallback(async () => {
+    if (!current) return;
     if (status === STATUS.RECORDING || status === STATUS.UPLOADING) return;
     setFeedback(t.listening);
     try {
@@ -181,11 +275,31 @@ export default function AudioRecorder() {
       recorder.start(100);
       setStatus(STATUS.RECORDING);
     } catch (err) {
-      console.error("mic permission denied", err);
-      setStatus(STATUS.ERROR);
-      setFeedback(t.micPerm);
+      const name = err?.name || "";
+      console.error("getUserMedia failed:", name, err);
+      if (
+        name === "NotAllowedError" ||
+        name === "PermissionDeniedError" ||
+        name === "SecurityError"
+      ) {
+        setStatus(STATUS.MIC_BLOCKED);
+        setFeedback(t.micBlocked);
+      } else if (
+        name === "NotFoundError" ||
+        name === "DevicesNotFoundError" ||
+        name === "OverconstrainedError"
+      ) {
+        setStatus(STATUS.ERROR);
+        setFeedback(t.micMissing);
+      } else if (name === "NotReadableError" || name === "TrackStartError") {
+        setStatus(STATUS.ERROR);
+        setFeedback(t.micBusy);
+      } else {
+        setStatus(STATUS.ERROR);
+        setFeedback(t.micPerm);
+      }
     }
-  }, [status, stopStream, t, uploadBlob]);
+  }, [current, status, stopStream, t, uploadBlob]);
 
   const stopRecording = useCallback(() => {
     const recorder = mediaRecorderRef.current;
@@ -195,8 +309,9 @@ export default function AudioRecorder() {
   const isBusy = status === STATUS.UPLOADING;
   const isRecording = status === STATUS.RECORDING;
   const isSuccess = status === STATUS.SUCCESS;
-  const isRetry = status === STATUS.RETRY || status === STATUS.ERROR;
-  const isHebrew = lang === "he";
+  const isMicBlocked = status === STATUS.MIC_BLOCKED;
+  const isRetry =
+    status === STATUS.RETRY || status === STATUS.ERROR || isMicBlocked;
 
   const wordPalette = isSuccess
     ? "text-emerald-600 bg-emerald-100 ring-4 ring-emerald-300 shadow-[0_0_45px_rgba(16,185,129,0.35)]"
@@ -230,6 +345,265 @@ export default function AudioRecorder() {
     ? { duration: 0.7 }
     : { duration: 2, repeat: Infinity, ease: "easeInOut" };
 
+  const renderBody = () => {
+    if (wordsLoading) {
+      return (
+        <div className="flex flex-col items-center gap-4 py-10">
+          <BouncingDots />
+          <p className="text-sky-700 font-bold">{t.loading}</p>
+        </div>
+      );
+    }
+    if (wordsError) {
+      return (
+        <div className="flex flex-col items-center gap-4 py-8">
+          <p className="text-orange-500 font-bold text-center">{t.serverErr}</p>
+        </div>
+      );
+    }
+    if (fullDeck.length === 0) {
+      return (
+        <div className="flex flex-col items-center gap-4 py-8">
+          <p className="text-sky-700 font-bold text-center">{t.empty}</p>
+        </div>
+      );
+    }
+    if (sessionComplete) {
+      return (
+        <motion.div
+          key="round-done"
+          initial={{ scale: 0.7, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ type: "spring", stiffness: 200, damping: 18 }}
+          className="flex flex-col items-center gap-5 py-6"
+        >
+          <div className="text-8xl select-none" aria-hidden>
+            🏆
+          </div>
+          <h2 className="text-3xl sm:text-4xl font-extrabold text-emerald-600 text-center">
+            {t.roundDone}
+          </h2>
+          <p className="text-base sm:text-lg font-bold text-sky-700 text-center">
+            {t.roundDoneSub}
+          </p>
+          <button
+            type="button"
+            onClick={startNewRound}
+            className="bg-emerald-500 text-white text-xl font-extrabold px-8 py-4 rounded-full shadow-lg hover:bg-emerald-600 active:scale-95"
+          >
+            {t.playMore}
+          </button>
+        </motion.div>
+      );
+    }
+    if (!current) {
+      return (
+        <div className="flex flex-col items-center gap-4 py-10">
+          <BouncingDots />
+        </div>
+      );
+    }
+
+    const key = `${current.id}-${current.word}`;
+
+    return (
+      <>
+        <motion.div
+          key={`emoji-${key}`}
+          initial={{ scale: 0.5, opacity: 0, rotate: -8 }}
+          animate={{ scale: 1, opacity: 1, rotate: 0 }}
+          transition={{ type: "spring", stiffness: 220, damping: 16 }}
+        >
+          <CurrentVisual word={current} />
+        </motion.div>
+
+        <div className="relative">
+          <motion.div
+            key={`word-${key}`}
+            initial={{ y: 10, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ delay: 0.08 }}
+            dir="auto"
+            className={`text-5xl sm:text-6xl font-black tracking-wider px-6 py-2 rounded-2xl transition-colors ${wordPalette} ${
+              isHebrew ? "" : "uppercase"
+            }`}
+          >
+            {current.word}
+          </motion.div>
+
+          <AnimatePresence>
+            {isSuccess &&
+              ["✨", "🌟", "⭐", "✨", "🌟", "⭐"].map((s, i) => {
+                const angle = (i / 6) * Math.PI * 2;
+                const r = 90;
+                return (
+                  <motion.span
+                    key={`star-${i}`}
+                    aria-hidden
+                    className="absolute left-1/2 top-1/2 text-3xl pointer-events-none"
+                    initial={{ x: 0, y: 0, opacity: 0, scale: 0.3 }}
+                    animate={{
+                      x: Math.cos(angle) * r,
+                      y: Math.sin(angle) * r - 10,
+                      opacity: 1,
+                      scale: 1,
+                      rotate: 360,
+                    }}
+                    exit={{ opacity: 0, scale: 0.3 }}
+                    transition={{ duration: 0.8, delay: i * 0.04 }}
+                  >
+                    {s}
+                  </motion.span>
+                );
+              })}
+          </AnimatePresence>
+        </div>
+
+        <div className="min-h-[3.5rem] flex flex-col items-center justify-center gap-1">
+          <motion.p
+            key={`fb-${status}-${feedback}`}
+            initial={{ y: 6, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            className={`text-base sm:text-lg font-bold text-center ${
+              isSuccess
+                ? "text-emerald-600"
+                : isRetry
+                ? "text-orange-500"
+                : "text-sky-700"
+            }`}
+          >
+            {feedback || t.hint}
+          </motion.p>
+          <AnimatePresence>
+            {heard && (isSuccess || isRetry) && !isMicBlocked && (
+              <motion.p
+                key={`heard-${heard}`}
+                initial={{ y: 4, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="text-xs sm:text-sm text-slate-500"
+                dir="auto"
+              >
+                {t.heardPrefix}{" "}
+                <span className="font-bold text-slate-700" dir="auto">
+                  &ldquo;{heard}&rdquo;
+                </span>
+              </motion.p>
+            )}
+            {isMicBlocked && (
+              <motion.p
+                key="mic-blocked-hint"
+                initial={{ y: 4, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="text-xs sm:text-sm text-slate-600 text-center max-w-xs leading-relaxed px-2"
+                dir="auto"
+              >
+                {t.micBlockedHint}
+              </motion.p>
+            )}
+          </AnimatePresence>
+        </div>
+
+        <div className="relative w-44 h-44 flex items-center justify-center">
+          <AnimatePresence>
+            {isRecording &&
+              [0, 0.35, 0.7].map((delay, i) => (
+                <motion.span
+                  key={`ring-${i}`}
+                  aria-hidden
+                  className="absolute inset-0 rounded-full bg-pink-300/50"
+                  initial={{ scale: 0.9, opacity: 0.55 }}
+                  animate={{ scale: 1.7, opacity: 0 }}
+                  exit={{ opacity: 0 }}
+                  transition={{
+                    duration: 1.3,
+                    repeat: Infinity,
+                    delay,
+                    ease: "easeOut",
+                  }}
+                />
+              ))}
+          </AnimatePresence>
+
+          <motion.button
+            type="button"
+            disabled={isBusy}
+            aria-label={t.micLabel}
+            aria-pressed={isRecording}
+            onMouseDown={startRecording}
+            onMouseUp={stopRecording}
+            onMouseLeave={isRecording ? stopRecording : undefined}
+            onTouchStart={(event) => {
+              event.preventDefault();
+              startRecording();
+            }}
+            onTouchEnd={(event) => {
+              event.preventDefault();
+              stopRecording();
+            }}
+            animate={micMotion}
+            transition={micTransition}
+            className={`relative w-40 h-40 rounded-full shadow-xl flex items-center justify-center text-7xl select-none touch-none focus:outline-none focus-visible:ring-8 ring-white/70 transition-colors ${micPalette}`}
+          >
+            {isBusy ? (
+              <BouncingDots />
+            ) : isRecording ? (
+              <span aria-hidden>🎙️</span>
+            ) : isSuccess ? (
+              <span aria-hidden>🎉</span>
+            ) : (
+              <span aria-hidden>🎤</span>
+            )}
+          </motion.button>
+        </div>
+
+        <div className="flex items-center gap-4 min-h-[3rem]">
+          <AnimatePresence mode="wait">
+            {isSuccess && (
+              <motion.button
+                key="next"
+                type="button"
+                initial={{ scale: 0.7, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.7, opacity: 0 }}
+                onClick={nextWord}
+                className="bg-emerald-500 text-white text-lg font-extrabold px-6 py-3 rounded-full shadow-lg hover:bg-emerald-600 active:scale-95"
+              >
+                {t.next}
+              </motion.button>
+            )}
+            {isRetry && (
+              <motion.button
+                key="again"
+                type="button"
+                initial={{ scale: 0.7, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.7, opacity: 0 }}
+                onClick={reset}
+                className="bg-amber-400 text-amber-900 text-lg font-extrabold px-6 py-3 rounded-full shadow-lg hover:bg-amber-500 active:scale-95"
+              >
+                {t.again}
+              </motion.button>
+            )}
+          </AnimatePresence>
+
+          <button
+            type="button"
+            onClick={nextWord}
+            className="text-slate-500 hover:text-sky-700 text-sm font-bold underline-offset-4 hover:underline"
+          >
+            {t.skip}
+          </button>
+        </div>
+
+        <p className="mt-2 text-center text-xs text-slate-500" dir="auto">
+          {Math.min(index + 1, sessionDeck.length)} / {sessionDeck.length}
+        </p>
+      </>
+    );
+  };
+
   return (
     <div
       dir={dir}
@@ -245,177 +619,20 @@ export default function AudioRecorder() {
           {t.swap}
         </button>
 
+        <Link
+          to="/manage"
+          aria-label="Manage words"
+          className="absolute top-4 start-4 w-10 h-10 flex items-center justify-center rounded-full text-lg bg-sky-100 text-sky-700 hover:bg-sky-200 active:scale-95 transition shadow-sm"
+        >
+          ⚙️
+        </Link>
+
         <div className="flex flex-col items-center gap-5 mt-2">
           <h1 className="text-2xl sm:text-3xl font-extrabold text-sky-700">
             {t.title}
           </h1>
-
-          <motion.div
-            key={`emoji-${lang}-${current.word}`}
-            initial={{ scale: 0.5, opacity: 0, rotate: -8 }}
-            animate={{ scale: 1, opacity: 1, rotate: 0 }}
-            transition={{ type: "spring", stiffness: 220, damping: 16 }}
-            className="text-8xl sm:text-9xl select-none drop-shadow-md"
-            aria-hidden
-          >
-            {current.emoji}
-          </motion.div>
-
-          <div className="relative">
-            <motion.div
-              key={`word-${lang}-${current.word}`}
-              initial={{ y: 10, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              transition={{ delay: 0.08 }}
-              dir="auto"
-              className={`text-5xl sm:text-6xl font-black tracking-wider px-6 py-2 rounded-2xl transition-colors ${wordPalette} ${
-                isHebrew ? "" : "uppercase"
-              }`}
-            >
-              {current.word}
-            </motion.div>
-
-            <AnimatePresence>
-              {isSuccess &&
-                ["✨", "🌟", "⭐", "✨", "🌟", "⭐"].map((s, i) => {
-                  const angle = (i / 6) * Math.PI * 2;
-                  const r = 90;
-                  return (
-                    <motion.span
-                      key={`star-${i}`}
-                      aria-hidden
-                      className="absolute left-1/2 top-1/2 text-3xl pointer-events-none"
-                      initial={{ x: 0, y: 0, opacity: 0, scale: 0.3 }}
-                      animate={{
-                        x: Math.cos(angle) * r,
-                        y: Math.sin(angle) * r - 10,
-                        opacity: 1,
-                        scale: 1,
-                        rotate: 360,
-                      }}
-                      exit={{ opacity: 0, scale: 0.3 }}
-                      transition={{ duration: 0.8, delay: i * 0.04 }}
-                    >
-                      {s}
-                    </motion.span>
-                  );
-                })}
-            </AnimatePresence>
-          </div>
-
-          <div className="h-8 flex items-center">
-            <motion.p
-              key={`fb-${status}-${feedback}`}
-              initial={{ y: 6, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              className={`text-base sm:text-lg font-bold text-center ${
-                isSuccess
-                  ? "text-emerald-600"
-                  : isRetry
-                  ? "text-orange-500"
-                  : "text-sky-700"
-              }`}
-            >
-              {feedback || t.hint}
-            </motion.p>
-          </div>
-
-          <div className="relative w-44 h-44 flex items-center justify-center">
-            <AnimatePresence>
-              {isRecording &&
-                [0, 0.35, 0.7].map((delay, i) => (
-                  <motion.span
-                    key={`ring-${i}`}
-                    aria-hidden
-                    className="absolute inset-0 rounded-full bg-pink-300/50"
-                    initial={{ scale: 0.9, opacity: 0.55 }}
-                    animate={{ scale: 1.7, opacity: 0 }}
-                    exit={{ opacity: 0 }}
-                    transition={{
-                      duration: 1.3,
-                      repeat: Infinity,
-                      delay,
-                      ease: "easeOut",
-                    }}
-                  />
-                ))}
-            </AnimatePresence>
-
-            <motion.button
-              type="button"
-              disabled={isBusy}
-              aria-label={t.micLabel}
-              aria-pressed={isRecording}
-              onMouseDown={startRecording}
-              onMouseUp={stopRecording}
-              onMouseLeave={isRecording ? stopRecording : undefined}
-              onTouchStart={(event) => {
-                event.preventDefault();
-                startRecording();
-              }}
-              onTouchEnd={(event) => {
-                event.preventDefault();
-                stopRecording();
-              }}
-              animate={micMotion}
-              transition={micTransition}
-              className={`relative w-40 h-40 rounded-full shadow-xl flex items-center justify-center text-7xl select-none touch-none focus:outline-none focus-visible:ring-8 ring-white/70 transition-colors ${micPalette}`}
-            >
-              {isBusy ? (
-                <BouncingDots />
-              ) : isRecording ? (
-                <span aria-hidden>🎙️</span>
-              ) : isSuccess ? (
-                <span aria-hidden>🎉</span>
-              ) : (
-                <span aria-hidden>🎤</span>
-              )}
-            </motion.button>
-          </div>
-
-          <div className="flex items-center gap-4 min-h-[3rem]">
-            <AnimatePresence mode="wait">
-              {isSuccess && (
-                <motion.button
-                  key="next"
-                  type="button"
-                  initial={{ scale: 0.7, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  exit={{ scale: 0.7, opacity: 0 }}
-                  onClick={nextWord}
-                  className="bg-emerald-500 text-white text-lg font-extrabold px-6 py-3 rounded-full shadow-lg hover:bg-emerald-600 active:scale-95"
-                >
-                  {t.next}
-                </motion.button>
-              )}
-              {isRetry && (
-                <motion.button
-                  key="again"
-                  type="button"
-                  initial={{ scale: 0.7, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  exit={{ scale: 0.7, opacity: 0 }}
-                  onClick={reset}
-                  className="bg-amber-400 text-amber-900 text-lg font-extrabold px-6 py-3 rounded-full shadow-lg hover:bg-amber-500 active:scale-95"
-                >
-                  {t.again}
-                </motion.button>
-              )}
-            </AnimatePresence>
-
-            <button
-              type="button"
-              onClick={nextWord}
-              className="text-slate-500 hover:text-sky-700 text-sm font-bold underline-offset-4 hover:underline"
-            >
-              {t.skip}
-            </button>
-          </div>
+          {renderBody()}
         </div>
-
-        <p className="mt-6 text-center text-xs text-slate-500" dir="auto">
-          {(index % deck.length) + 1} / {deck.length}
-        </p>
       </div>
     </div>
   );

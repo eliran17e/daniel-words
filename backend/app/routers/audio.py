@@ -40,13 +40,15 @@ async def evaluate_audio(
         audio_bytes, suffix, language=target_language
     )
 
-    target_norm = audio_service.normalize(target_word)
-    transcript_norm = audio_service.normalize(transcript)
-    is_correct = bool(target_norm) and target_norm in transcript_norm
+    is_correct = audio_service.matches(target_word, transcript)
 
-    word = db.query(Word).filter(Word.word == target_word).one_or_none()
+    word = (
+        db.query(Word)
+        .filter(Word.word == target_word, Word.language == target_language)
+        .one_or_none()
+    )
     if word is None:
-        word = Word(word=target_word, category="general")
+        word = Word(word=target_word, language=target_language, category="general")
         db.add(word)
         db.commit()
         db.refresh(word)

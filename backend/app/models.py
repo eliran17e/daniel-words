@@ -1,6 +1,14 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String
+from sqlalchemy import (
+    Boolean,
+    Column,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import relationship
 
 from app.database import Base
@@ -8,11 +16,17 @@ from app.database import Base
 
 class Word(Base):
     __tablename__ = "words"
+    __table_args__ = (
+        UniqueConstraint("word", "language", name="uq_word_language"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
-    word = Column(String(128), unique=True, nullable=False, index=True)
+    word = Column(String(128), nullable=False, index=True)
+    language = Column(String(8), nullable=False, default="en", index=True)
+    emoji = Column(String(16), nullable=True)
     category = Column(String(64), nullable=False, default="general")
     image_url = Column(String(512), nullable=True)
+    is_selected = Column(Boolean, nullable=False, default=False, index=True)
 
     attempts = relationship(
         "AttemptLog",

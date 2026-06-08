@@ -34,6 +34,45 @@ def normalize(text: str) -> str:
     return "".join(ch.lower() for ch in text.strip() if ch.isalnum())
 
 
+def levenshtein(a: str, b: str) -> int:
+    if a == b:
+        return 0
+    if not a:
+        return len(b)
+    if not b:
+        return len(a)
+    prev = list(range(len(b) + 1))
+    for i, ca in enumerate(a, 1):
+        curr = [i]
+        for j, cb in enumerate(b, 1):
+            insert = curr[j - 1] + 1
+            delete = prev[j] + 1
+            substitute = prev[j - 1] + (0 if ca == cb else 1)
+            curr.append(min(insert, delete, substitute))
+        prev = curr
+    return prev[-1]
+
+
+def matches(target: str, transcript: str, max_edits: int = 2) -> bool:
+    target_norm = normalize(target)
+    if not target_norm:
+        return False
+    transcript_norm = normalize(transcript)
+    if not transcript_norm:
+        return False
+
+    threshold = min(max_edits, max(1, len(target_norm) // 2))
+
+    if target_norm in transcript_norm:
+        return True
+    if levenshtein(target_norm, transcript_norm) <= threshold:
+        return True
+    for word in transcript.split():
+        if levenshtein(target_norm, normalize(word)) <= threshold:
+            return True
+    return False
+
+
 def _to_wav(audio_bytes: bytes, suffix: str) -> str:
     with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as src:
         src.write(audio_bytes)

@@ -15,6 +15,8 @@ WHISPER_MODEL: str = _env("WHISPER_MODEL", "small")
 WHISPER_DEVICE: str = _env("WHISPER_DEVICE", "cpu")
 WHISPER_COMPUTE_TYPE: str = _env("WHISPER_COMPUTE_TYPE", "int8")
 
+PIXABAY_API_KEY: str = _env("PIXABAY_API_KEY", "")
+
 SUPPORTED_LANGUAGES: Set[str] = {"en", "he"}
 
 CORS_ORIGINS: List[str] = [
