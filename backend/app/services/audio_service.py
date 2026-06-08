@@ -145,18 +145,28 @@ def _transcribe_local(wav_path: str, language: str) -> str:
     return " ".join(seg.text for seg in segments).strip()
 
 
+_LANG_PROMPTS = {
+    "he": "המילה הבאה היא בעברית. נא לתמלל בעברית בלבד.",
+    "en": "The following word is in English. Transcribe in English only.",
+}
+
+
 def _transcribe_groq(wav_path: str, language: str) -> str:
+    data = {
+        "model": GROQ_WHISPER_MODEL,
+        "language": language,
+        "response_format": "json",
+        "temperature": "0",
+    }
+    prompt = _LANG_PROMPTS.get(language)
+    if prompt:
+        data["prompt"] = prompt
     with open(wav_path, "rb") as fh:
         resp = requests.post(
             "https://api.groq.com/openai/v1/audio/transcriptions",
             headers={"Authorization": f"Bearer {GROQ_API_KEY}"},
             files={"file": ("audio.wav", fh, "audio/wav")},
-            data={
-                "model": GROQ_WHISPER_MODEL,
-                "language": language,
-                "response_format": "json",
-                "temperature": "0",
-            },
+            data=data,
             timeout=30,
         )
     if resp.status_code >= 400:
