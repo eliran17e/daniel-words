@@ -169,6 +169,21 @@ def translate(word: str, from_language: str, to_language: str) -> Optional[str]:
     return None
 
 
+def translate_phrase_to_english(phrase: str, language: str) -> str:
+    """Best-effort phrase translation. Translates known words via the dict,
+    leaves unknown words as-is. Useful for free-text search queries."""
+    if language != "he":
+        return phrase.strip()
+    parts = phrase.strip().split()
+    if not parts:
+        return phrase.strip()
+    out = []
+    for part in parts:
+        en = HEBREW_TO_ENGLISH.get(_normalize(part))
+        out.append(en if en else part)
+    return " ".join(out)
+
+
 def lookup_emoji(word: str, language: str) -> Optional[str]:
     english = translate_to_english(word, language)
     if not english:

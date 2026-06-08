@@ -4,6 +4,7 @@ from typing import List, Optional
 import requests
 
 from app.config import PIXABAY_API_KEY
+from app.services import emoji_service
 
 PIXABAY_URL = "https://pixabay.com/api/"
 
@@ -36,12 +37,22 @@ def _request(query: str, language: str, per_page: int) -> List[dict]:
         return []
 
 
+def _to_english_query(query: str, language: str) -> str:
+    """Convert a query to its best English form for Pixabay search."""
+    if language != "he":
+        return query.strip()
+    translated = emoji_service.translate_phrase_to_english(query, "he")
+    return translated.strip() or query.strip()
+
+
 def fetch_pixabay_image_url(query: str, language: str = "en") -> Optional[str]:
-    hits = _request(query, language, per_page=3)
+    english_query = _to_english_query(query, language)
+    hits = _request(english_query, "en", per_page=3)
     if not hits:
         return None
     return hits[0].get("webformatURL")
 
 
 def search_pixabay(query: str, language: str = "en", per_page: int = 12) -> List[dict]:
-    return _request(query, language, per_page)
+    english_query = _to_english_query(query, language)
+    return _request(english_query, "en", per_page)
