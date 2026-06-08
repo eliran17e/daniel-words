@@ -67,6 +67,45 @@ export function playTap() {
   tone({ freq: 880, start: 0, duration: 0.07, type: "sine", peak: 0.12 });
 }
 
+const VOICE_KEY_PREFIX = "dw-voice-";
+
+export function getSavedVoiceURI(language) {
+  try {
+    return localStorage.getItem(`${VOICE_KEY_PREFIX}${language}`) || "";
+  } catch {
+    return "";
+  }
+}
+
+export function setSavedVoiceURI(language, voiceURI) {
+  try {
+    if (voiceURI) {
+      localStorage.setItem(`${VOICE_KEY_PREFIX}${language}`, voiceURI);
+    } else {
+      localStorage.removeItem(`${VOICE_KEY_PREFIX}${language}`);
+    }
+  } catch {
+    // ignore
+  }
+}
+
+export function getVoicesForLanguage(language) {
+  if (typeof window === "undefined" || !("speechSynthesis" in window)) {
+    return [];
+  }
+  const prefix = language === "he" ? "he" : "en";
+  return window.speechSynthesis
+    .getVoices()
+    .filter((v) => v.lang.toLowerCase().startsWith(prefix));
+}
+
+function pickVoice(language) {
+  const savedURI = getSavedVoiceURI(language);
+  if (!savedURI) return null;
+  const voices = window.speechSynthesis.getVoices();
+  return voices.find((v) => v.voiceURI === savedURI) || null;
+}
+
 /**
  * Speak a word out loud using the browser's TTS. Returns true if the request
  * was queued, false if SpeechSynthesis isn't available.
@@ -77,8 +116,10 @@ export function speakWord(text, language = "en") {
   if (!text || !text.trim()) return false;
   const utterance = new SpeechSynthesisUtterance(text);
   utterance.lang = language === "he" ? "he-IL" : "en-US";
-  utterance.rate = 0.85; // slightly slower for kids
+  utterance.rate = 0.85;
   utterance.pitch = 1.05;
+  const voice = pickVoice(language);
+  if (voice) utterance.voice = voice;
   window.speechSynthesis.cancel();
   window.speechSynthesis.speak(utterance);
   return true;
@@ -86,10 +127,5 @@ export function speakWord(text, language = "en") {
 
 /** Best-effort detection that some voice exists for a given language tag. */
 export function hasVoiceFor(language) {
-  if (typeof window === "undefined" || !("speechSynthesis" in window)) {
-    return false;
-  }
-  const voices = window.speechSynthesis.getVoices();
-  const prefix = language === "he" ? "he" : "en";
-  return voices.some((v) => v.lang.toLowerCase().startsWith(prefix));
+  return getVoicesForLanguage(language).length > 0;
 }

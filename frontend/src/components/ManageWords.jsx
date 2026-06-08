@@ -3,6 +3,12 @@ import axios from "axios";
 import { AnimatePresence, motion } from "framer-motion";
 import { Link } from "react-router-dom";
 import EditVisualModal, { resolveImageUrl } from "./EditVisualModal";
+import {
+  getSavedVoiceURI,
+  getVoicesForLanguage,
+  setSavedVoiceURI,
+  speakWord,
+} from "../sound";
 
 const API_BASE =
   process.env.REACT_APP_API_BASE || "http://localhost:8000/api";
@@ -281,6 +287,8 @@ export default function ManageWords() {
           </AnimatePresence>
         </form>
 
+        <VoiceSettings />
+
         {loading ? (
           <p className="text-center text-sky-700 font-bold py-8">Loading…</p>
         ) : loadError ? (
@@ -312,6 +320,121 @@ export default function ManageWords() {
           />
         )}
       </AnimatePresence>
+    </div>
+  );
+}
+
+function VoiceSettings() {
+  const [open, setOpen] = useState(false);
+  const [voices, setVoices] = useState({ en: [], he: [] });
+  const [selected, setSelected] = useState({
+    en: getSavedVoiceURI("en"),
+    he: getSavedVoiceURI("he"),
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+    const update = () =>
+      setVoices({
+        en: getVoicesForLanguage("en"),
+        he: getVoicesForLanguage("he"),
+      });
+    update();
+    window.speechSynthesis.addEventListener("voiceschanged", update);
+    return () =>
+      window.speechSynthesis.removeEventListener("voiceschanged", update);
+  }, []);
+
+  const handleChange = (language, uri) => {
+    setSelected((prev) => ({ ...prev, [language]: uri }));
+    setSavedVoiceURI(language, uri);
+  };
+
+  const test = (language) => {
+    const sample =
+      language === "he" ? "שלום, אומרים את המילה" : "Hello, say the word";
+    speakWord(sample, language);
+  };
+
+  const ttsSupported =
+    typeof window !== "undefined" && "speechSynthesis" in window;
+
+  return (
+    <section className="bg-white/85 backdrop-blur rounded-3xl shadow-xl ring-1 ring-white/70 p-5 mb-6">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center justify-between gap-2 text-left"
+      >
+        <span className="text-sm font-extrabold text-sky-700 uppercase tracking-wider">
+          🔊 Voice settings
+        </span>
+        <span className="text-xs text-slate-500">
+          {open ? "Hide ▴" : "Show ▾"}
+        </span>
+      </button>
+
+      {open && (
+        <div className="mt-4 flex flex-col gap-3">
+          {!ttsSupported && (
+            <p className="text-sm text-orange-500">
+              This browser doesn't support speech synthesis.
+            </p>
+          )}
+          <VoiceRow
+            label="English"
+            voices={voices.en}
+            selected={selected.en}
+            onChange={(uri) => handleChange("en", uri)}
+            onTest={() => test("en")}
+          />
+          <VoiceRow
+            label="עברית"
+            voices={voices.he}
+            selected={selected.he}
+            onChange={(uri) => handleChange("he", uri)}
+            onTest={() => test("he")}
+            dir="rtl"
+          />
+          <p className="text-xs text-slate-500 leading-relaxed">
+            Voices come from your device. To install more (especially Hebrew),
+            go to your phone's system Text-to-speech settings.
+          </p>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function VoiceRow({ label, voices, selected, onChange, onTest, dir = "ltr" }) {
+  return (
+    <div className="flex items-center gap-2 flex-wrap" dir={dir}>
+      <span className="font-bold text-sm text-slate-700 min-w-[4rem]">
+        {label}
+      </span>
+      <select
+        value={selected}
+        onChange={(e) => onChange(e.target.value)}
+        className="flex-1 min-w-0 px-3 py-2 rounded-xl border-2 border-sky-200 focus:border-sky-400 focus:outline-none text-sm bg-white"
+        dir="ltr"
+      >
+        <option value="">
+          Default {voices.length === 0 ? "(no voices found)" : ""}
+        </option>
+        {voices.map((v) => (
+          <option key={v.voiceURI} value={v.voiceURI}>
+            {v.name} ({v.lang})
+          </option>
+        ))}
+      </select>
+      <button
+        type="button"
+        onClick={onTest}
+        aria-label="Test voice"
+        className="w-10 h-10 rounded-full bg-emerald-100 text-emerald-700 hover:bg-emerald-200 font-bold text-sm shadow-sm active:scale-95"
+      >
+        ▶
+      </button>
     </div>
   );
 }
