@@ -512,10 +512,10 @@ export default function AudioRecorder() {
                 <motion.span
                   key={`ring-${i}`}
                   aria-hidden
-                  className="absolute inset-0 rounded-full bg-pink-300/50"
+                  className="absolute inset-0 rounded-full bg-pink-300/50 pointer-events-none"
                   initial={{ scale: 0.9, opacity: 0.55 }}
                   animate={{ scale: 1.7, opacity: 0 }}
-                  exit={{ opacity: 0 }}
+                  exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.15 } }}
                   transition={{
                     duration: 1.3,
                     repeat: Infinity,
