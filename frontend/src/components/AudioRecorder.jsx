@@ -3,6 +3,12 @@ import axios from "axios";
 import { AnimatePresence, motion } from "framer-motion";
 import { Link } from "react-router-dom";
 import { resolveImageUrl } from "./EditVisualModal";
+import {
+  playRetry,
+  playRoundComplete,
+  playSuccess,
+  speakWord,
+} from "../sound";
 
 const API_BASE =
   process.env.REACT_APP_API_BASE || "http://localhost:8000/api";
@@ -66,6 +72,7 @@ const I18N = {
     again: "Try Again",
     iDidIt: "I did it ✓",
     skip: "Skip",
+    listen: "Hear the word",
     micLabel: "Hold to speak",
     swap: "עברית",
     loading: "Loading words…",
@@ -94,6 +101,7 @@ const I18N = {
     again: "ננסה שוב",
     iDidIt: "✓ אמרתי נכון",
     skip: "דלג",
+    listen: "להאזין למילה",
     micLabel: "לחצו והחזיקו כדי לדבר",
     swap: "EN",
     loading: "טוען מילים…",
@@ -357,6 +365,19 @@ export default function AudioRecorder() {
   const isRetry =
     status === STATUS.RETRY || status === STATUS.ERROR || isMicBlocked;
 
+  useEffect(() => {
+    if (status === STATUS.SUCCESS) playSuccess();
+    else if (status === STATUS.RETRY) playRetry();
+  }, [status]);
+
+  useEffect(() => {
+    if (sessionComplete) playRoundComplete();
+  }, [sessionComplete]);
+
+  const handleSpeak = useCallback(() => {
+    if (current) speakWord(current.word, current.language);
+  }, [current]);
+
   const wordPalette = isSuccess
     ? "text-emerald-600 bg-emerald-100 ring-4 ring-emerald-300 shadow-[0_0_45px_rgba(16,185,129,0.35)]"
     : isRetry
@@ -461,7 +482,7 @@ export default function AudioRecorder() {
           <CurrentVisual word={current} />
         </motion.div>
 
-        <div className="relative">
+        <div className="relative flex flex-col items-center gap-2">
           <motion.div
             key={`word-${key}`}
             initial={{ y: 10, opacity: 0 }}
@@ -474,6 +495,15 @@ export default function AudioRecorder() {
           >
             {current.word}
           </motion.div>
+
+          <button
+            type="button"
+            onClick={handleSpeak}
+            aria-label={t.listen}
+            className="w-10 h-10 rounded-full bg-sky-100 text-sky-700 hover:bg-sky-200 active:scale-95 flex items-center justify-center text-lg shadow-sm transition"
+          >
+            🔊
+          </button>
 
           <AnimatePresence>
             {isSuccess &&
