@@ -11,6 +11,10 @@ class HealthResponse(BaseModel):
     model_loaded: bool
 
 
+class ServerCapabilities(BaseModel):
+    uploads_enabled: bool
+
+
 class EvaluationResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

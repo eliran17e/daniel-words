@@ -1,0 +1,21 @@
+{
+  "short_name": "Daniel Words",
+  "name": "Daniel Words — Say the Word",
+  "description": "A voice-first word practice game for kids in English and Hebrew.",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "type": "image/svg+xml",
+      "sizes": "any",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": ".",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#7dd3fc",
+  "background_color": "#f0f9ff",
+  "lang": "en",
+  "dir": "ltr"
+}

@@ -6,6 +6,13 @@ def _env(name: str, default: str) -> str:
     return os.getenv(name, default)
 
 
+def _bool(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
 DATABASE_URL: str = _env(
     "DATABASE_URL",
     "postgresql+psycopg2://daniel:daniel@db:5432/daniel_words",
@@ -15,11 +22,19 @@ WHISPER_MODEL: str = _env("WHISPER_MODEL", "small")
 WHISPER_DEVICE: str = _env("WHISPER_DEVICE", "cpu")
 WHISPER_COMPUTE_TYPE: str = _env("WHISPER_COMPUTE_TYPE", "int8")
 
+GROQ_API_KEY: str = _env("GROQ_API_KEY", "")
+GROQ_WHISPER_MODEL: str = _env("GROQ_WHISPER_MODEL", "whisper-large-v3-turbo")
+
 PIXABAY_API_KEY: str = _env("PIXABAY_API_KEY", "")
+
+ENABLE_UPLOADS: bool = _bool("ENABLE_UPLOADS", True)
 
 SUPPORTED_LANGUAGES: Set[str] = {"en", "he"}
 
-CORS_ORIGINS: List[str] = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-]
+
+def _parse_origins(raw: str) -> List[str]:
+    return [origin.strip() for origin in raw.split(",") if origin.strip()]
+
+
+_DEFAULT_ORIGINS = "http://localhost:3000,http://127.0.0.1:3000"
+CORS_ORIGINS: List[str] = _parse_origins(_env("CORS_ORIGINS", _DEFAULT_ORIGINS))

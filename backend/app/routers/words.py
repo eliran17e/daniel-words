@@ -13,7 +13,7 @@ from fastapi import (
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.config import SUPPORTED_LANGUAGES
+from app.config import ENABLE_UPLOADS, SUPPORTED_LANGUAGES
 from app.database import get_db
 from app.models import Word
 from app.schemas import (
@@ -207,6 +207,8 @@ async def upload_word_image(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
 ) -> Word:
+    if not ENABLE_UPLOADS:
+        raise HTTPException(status_code=403, detail="uploads are disabled")
     word = db.get(Word, word_id)
     if word is None:
         raise HTTPException(status_code=404, detail="word not found")

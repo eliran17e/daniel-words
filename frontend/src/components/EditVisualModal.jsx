@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import axios from "axios";
 import { motion } from "framer-motion";
 
-const TABS = [
+const ALL_TABS = [
   { key: "emoji", label: "Emoji" },
   { key: "upload", label: "Upload" },
   { key: "pixabay", label: "Pixabay" },
@@ -15,7 +15,16 @@ export function resolveImageUrl(apiBase, url) {
   return `${host}${url}`;
 }
 
-export default function EditVisualModal({ word, apiBase, onClose, onSaved }) {
+export default function EditVisualModal({
+  word,
+  apiBase,
+  uploadsEnabled = true,
+  onClose,
+  onSaved,
+}) {
+  const TABS = uploadsEnabled
+    ? ALL_TABS
+    : ALL_TABS.filter((t) => t.key !== "upload");
   const [tab, setTab] = useState("emoji");
   const [emojiValue, setEmojiValue] = useState(word.emoji || "");
   const [file, setFile] = useState(null);

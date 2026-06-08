@@ -3,9 +3,10 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
+from app.config import ENABLE_UPLOADS
 from app.database import get_db
 from app.models import AttemptLog, Word
-from app.schemas import EvaluationResponse, HealthResponse
+from app.schemas import EvaluationResponse, HealthResponse, ServerCapabilities
 from app.services import audio_service
 
 router = APIRouter(prefix="/api", tags=["Audio Evaluation"])
@@ -15,8 +16,13 @@ router = APIRouter(prefix="/api", tags=["Audio Evaluation"])
 def health() -> HealthResponse:
     return HealthResponse(
         status="ok",
-        model_loaded=audio_service.get_model() is not None,
+        model_loaded=audio_service.model_ready(),
     )
+
+
+@router.get("/capabilities", response_model=ServerCapabilities)
+def capabilities() -> ServerCapabilities:
+    return ServerCapabilities(uploads_enabled=ENABLE_UPLOADS)
 
 
 @router.post("/evaluate-audio", response_model=EvaluationResponse)

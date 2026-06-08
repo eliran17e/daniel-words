@@ -32,6 +32,22 @@ export default function ManageWords() {
   const [submitting, setSubmitting] = useState(false);
   const [flash, setFlash] = useState(null);
   const [editing, setEditing] = useState(null);
+  const [uploadsEnabled, setUploadsEnabled] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    axios
+      .get(`${API_BASE}/capabilities`, { timeout: 5000 })
+      .then(({ data }) => {
+        if (!cancelled) setUploadsEnabled(data?.uploads_enabled !== false);
+      })
+      .catch(() => {
+        if (!cancelled) setUploadsEnabled(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleSaved = useCallback((updated) => {
     setWords((prev) =>
@@ -266,6 +282,7 @@ export default function ManageWords() {
             key={editing.id}
             word={editing}
             apiBase={API_BASE}
+            uploadsEnabled={uploadsEnabled}
             onClose={() => setEditing(null)}
             onSaved={handleSaved}
           />
