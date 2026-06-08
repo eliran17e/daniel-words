@@ -64,6 +64,7 @@ const I18N = {
     serverErr: "Hmm — something hiccuped",
     next: "Next →",
     again: "Try Again",
+    iDidIt: "I did it ✓",
     skip: "Skip",
     micLabel: "Hold to speak",
     swap: "עברית",
@@ -91,6 +92,7 @@ const I18N = {
     serverErr: "אופס — קרתה תקלה",
     next: "→ הבא",
     again: "ננסה שוב",
+    iDidIt: "✓ אמרתי נכון",
     skip: "דלג",
     micLabel: "לחצו והחזיקו כדי לדבר",
     swap: "EN",
@@ -147,6 +149,13 @@ export default function AudioRecorder() {
   const mediaRecorderRef = useRef(null);
   const chunksRef = useRef([]);
   const streamRef = useRef(null);
+  const advanceTimerRef = useRef(null);
+
+  useEffect(() => {
+    return () => {
+      if (advanceTimerRef.current) clearTimeout(advanceTimerRef.current);
+    };
+  }, []);
 
   const t = I18N[lang];
   const dir = lang === "he" ? "rtl" : "ltr";
@@ -212,10 +221,24 @@ export default function AudioRecorder() {
   }, [startNewRound]);
 
   const nextWord = useCallback(() => {
+    if (advanceTimerRef.current) {
+      clearTimeout(advanceTimerRef.current);
+      advanceTimerRef.current = null;
+    }
     if (sessionDeck.length === 0) return;
     setIndex((i) => i + 1);
     reset();
   }, [sessionDeck.length, reset]);
+
+  const claimCorrect = useCallback(() => {
+    if (advanceTimerRef.current) clearTimeout(advanceTimerRef.current);
+    setStatus(STATUS.SUCCESS);
+    setFeedback(t.success);
+    advanceTimerRef.current = setTimeout(() => {
+      advanceTimerRef.current = null;
+      nextWord();
+    }, 1400);
+  }, [nextWord, t.success]);
 
   const swapLang = () => {
     setLang((l) => (l === "en" ? "he" : "en"));
