@@ -618,17 +618,28 @@ export default function AudioRecorder() {
               </motion.button>
             )}
             {isRetry && (
-              <motion.button
-                key="again"
-                type="button"
+              <motion.div
+                key="retry-actions"
                 initial={{ scale: 0.7, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
                 exit={{ scale: 0.7, opacity: 0 }}
-                onClick={reset}
-                className="bg-amber-400 text-amber-900 text-lg font-extrabold px-6 py-3 rounded-full shadow-lg hover:bg-amber-500 active:scale-95"
+                className="flex items-center gap-3"
               >
-                {t.again}
-              </motion.button>
+                <button
+                  type="button"
+                  onClick={reset}
+                  className="bg-amber-400 text-amber-900 text-lg font-extrabold px-5 py-3 rounded-full shadow-lg hover:bg-amber-500 active:scale-95"
+                >
+                  {t.again}
+                </button>
+                <button
+                  type="button"
+                  onClick={claimCorrect}
+                  className="bg-emerald-500 text-white text-lg font-extrabold px-5 py-3 rounded-full shadow-lg hover:bg-emerald-600 active:scale-95"
+                >
+                  {t.iDidIt}
+                </button>
+              </motion.div>
             )}
           </AnimatePresence>
 
