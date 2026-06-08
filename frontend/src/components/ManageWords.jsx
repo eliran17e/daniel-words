@@ -13,6 +13,18 @@ const LANGS = [
   { code: "he", label: "עברית" },
 ];
 
+const LANG_STORAGE_KEY = "dw-active-lang";
+
+function readPrimaryLang() {
+  try {
+    const saved = localStorage.getItem(LANG_STORAGE_KEY);
+    if (saved === "en" || saved === "he") return saved;
+  } catch {
+    // ignore
+  }
+  return "en";
+}
+
 const HEBREW_RE = /[֐-׿יִ-ﭏ]/;
 const LATIN_RE = /[A-Za-z]/;
 
@@ -125,8 +137,23 @@ export default function ManageWords() {
     for (const w of words) {
       if (out[w.language]) out[w.language].push(w);
     }
+    for (const key of Object.keys(out)) {
+      out[key].sort((a, b) => {
+        // selected words first; preserve original order otherwise
+        if (a.is_selected === b.is_selected) return 0;
+        return a.is_selected ? -1 : 1;
+      });
+    }
     return out;
   }, [words]);
+
+  const orderedLangs = useMemo(() => {
+    const primary = readPrimaryLang();
+    if (primary === "he") {
+      return [...LANGS].sort((a, b) => (a.code === "he" ? -1 : 1));
+    }
+    return LANGS;
+  }, []);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -260,7 +287,7 @@ export default function ManageWords() {
           </p>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            {LANGS.map((l) => (
+            {orderedLangs.map((l) => (
               <LangSection
                 key={l.code}
                 lang={l}
@@ -340,17 +367,19 @@ function LangSection({
       {words.length === 0 ? (
         <p className="text-sm text-slate-500">No words yet.</p>
       ) : (
-        <ul className="space-y-2">
-          {words.map((w) => (
-            <WordRow
-              key={w.id}
-              word={w}
-              onToggleSelect={() => onToggleSelect(w)}
-              onDelete={() => onDelete(w.id)}
-              onEdit={() => onEdit(w)}
-            />
-          ))}
-        </ul>
+        <motion.ul layout className="space-y-2">
+          <AnimatePresence initial={false}>
+            {words.map((w) => (
+              <WordRow
+                key={w.id}
+                word={w}
+                onToggleSelect={() => onToggleSelect(w)}
+                onDelete={() => onDelete(w.id)}
+                onEdit={() => onEdit(w)}
+              />
+            ))}
+          </AnimatePresence>
+        </motion.ul>
       )}
     </section>
   );
@@ -360,8 +389,13 @@ function WordRow({ word, onToggleSelect, onDelete, onEdit }) {
   const imgSrc = resolveImageUrl(API_BASE, word.image_url);
   const selected = !!word.is_selected;
   return (
-    <li
-      className={`flex items-center gap-2 rounded-2xl px-3 py-2 transition ${
+    <motion.li
+      layout
+      initial={{ opacity: 0, y: -4 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: 4 }}
+      transition={{ type: "spring", stiffness: 400, damping: 30 }}
+      className={`flex items-center gap-2 rounded-2xl px-3 py-2 ${
         selected
           ? "bg-emerald-50 hover:bg-emerald-100 ring-1 ring-emerald-200"
           : "bg-sky-50/60 hover:bg-sky-100"
@@ -416,6 +450,6 @@ function WordRow({ word, onToggleSelect, onDelete, onEdit }) {
       >
         ✕
       </button>
-    </li>
+    </motion.li>
   );
 }

@@ -112,8 +112,29 @@ function shuffle(arr) {
   return out;
 }
 
+const LANG_STORAGE_KEY = "dw-active-lang";
+
+function readSavedLang() {
+  try {
+    const saved = localStorage.getItem(LANG_STORAGE_KEY);
+    if (saved === "en" || saved === "he") return saved;
+  } catch {
+    // localStorage might be unavailable (private mode, etc.)
+  }
+  return "en";
+}
+
 export default function AudioRecorder() {
-  const [lang, setLang] = useState("en");
+  const [lang, setLang] = useState(readSavedLang);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(LANG_STORAGE_KEY, lang);
+    } catch {
+      // ignore
+    }
+  }, [lang]);
+
   const [allWords, setAllWords] = useState([]);
   const [wordsLoading, setWordsLoading] = useState(true);
   const [wordsError, setWordsError] = useState(false);
