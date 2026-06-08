@@ -39,8 +39,17 @@ export default function ManageWords() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
 
+  const [lang, setLang] = useState(readPrimaryLang);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(LANG_STORAGE_KEY, lang);
+    } catch {
+      // ignore
+    }
+  }, [lang]);
+
   const [newWord, setNewWord] = useState("");
-  const [newLang, setNewLang] = useState("en");
   const [submitting, setSubmitting] = useState(false);
   const [flash, setFlash] = useState(null);
   const [editing, setEditing] = useState(null);
@@ -147,13 +156,12 @@ export default function ManageWords() {
     return out;
   }, [words]);
 
-  const orderedLangs = useMemo(() => {
-    const primary = readPrimaryLang();
-    if (primary === "he") {
-      return [...LANGS].sort((a, b) => (a.code === "he" ? -1 : 1));
-    }
-    return LANGS;
-  }, []);
+  const currentLangDef = useMemo(
+    () => LANGS.find((l) => l.code === lang) || LANGS[0],
+    [lang]
+  );
+
+  const swapLang = () => setLang((l) => (l === "en" ? "he" : "en"));
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -164,7 +172,7 @@ export default function ManageWords() {
     try {
       const { data } = await axios.post(
         WORDS_URL,
-        { word: trimmed, language: newLang },
+        { word: trimmed, language: lang },
         { timeout: 15000 }
       );
       const both = [data.word, data.counterpart].filter(Boolean);
@@ -199,16 +207,26 @@ export default function ManageWords() {
   return (
     <div className="min-h-screen w-full font-rounded bg-gradient-to-br from-sky-100 via-emerald-50 to-amber-100 p-6">
       <div className="max-w-3xl mx-auto">
-        <header className="flex items-center justify-between mb-6">
+        <header className="flex items-center justify-between mb-6 gap-2 flex-wrap">
           <h1 className="text-2xl sm:text-3xl font-extrabold text-sky-700">
             Manage Words
           </h1>
-          <Link
-            to="/"
-            className="px-4 py-2 rounded-full text-xs font-extrabold uppercase tracking-widest bg-sky-100 text-sky-700 hover:bg-sky-200 transition shadow-sm"
-          >
-            ← Play
-          </Link>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={swapLang}
+              aria-label={`Switch language to ${lang === "he" ? "English" : "עברית"}`}
+              className="px-4 py-2 rounded-full text-xs font-extrabold uppercase tracking-widest bg-sky-100 text-sky-700 hover:bg-sky-200 active:scale-95 transition shadow-sm"
+            >
+              {lang === "he" ? "EN" : "עברית"}
+            </button>
+            <Link
+              to="/"
+              className="px-4 py-2 rounded-full text-xs font-extrabold uppercase tracking-widest bg-sky-100 text-sky-700 hover:bg-sky-200 transition shadow-sm"
+            >
+              ← Play
+            </Link>
+          </div>
         </header>
 
         <form
@@ -230,35 +248,19 @@ export default function ManageWords() {
                 const text = e.target.value;
                 setNewWord(text);
                 const detected = detectLang(text);
-                if (detected && detected !== newLang) setNewLang(detected);
+                if (detected && detected !== lang) setLang(detected);
               }}
-              placeholder={newLang === "he" ? "תפוח" : "apple"}
+              placeholder={lang === "he" ? "תפוח" : "apple"}
               dir="auto"
               maxLength={128}
               className="flex-1 px-4 py-3 rounded-2xl border-2 border-sky-200 focus:border-sky-400 focus:outline-none text-lg font-bold text-slate-800 bg-white"
             />
-            <div className="flex gap-2">
-              {LANGS.map((l) => (
-                <button
-                  key={l.code}
-                  type="button"
-                  onClick={() => setNewLang(l.code)}
-                  className={`px-4 py-3 rounded-2xl text-sm font-extrabold uppercase tracking-wider transition ${
-                    newLang === l.code
-                      ? "bg-sky-500 text-white shadow"
-                      : "bg-sky-100 text-sky-700 hover:bg-sky-200"
-                  }`}
-                >
-                  {l.label}
-                </button>
-              ))}
-            </div>
             <button
               type="submit"
               disabled={submitting || !newWord.trim()}
               className="px-6 py-3 rounded-2xl text-base font-extrabold bg-emerald-500 text-white shadow-lg hover:bg-emerald-600 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {submitting ? "Adding…" : "Add"}
+              {submitting ? "Adding…" : `Add to ${currentLangDef.label}`}
             </button>
           </div>
 
@@ -286,20 +288,15 @@ export default function ManageWords() {
             {loadError}
           </p>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            {orderedLangs.map((l) => (
-              <LangSection
-                key={l.code}
-                lang={l}
-                words={grouped[l.code]}
-                onToggleSelect={handleToggleSelect}
-                onDelete={(id) => handleDelete(id)}
-                onEdit={(w) => setEditing(w)}
-                onSelectAll={() => setLangSelection(l.code, true)}
-                onClearAll={() => setLangSelection(l.code, false)}
-              />
-            ))}
-          </div>
+          <LangSection
+            lang={currentLangDef}
+            words={grouped[lang]}
+            onToggleSelect={handleToggleSelect}
+            onDelete={(id) => handleDelete(id)}
+            onEdit={(w) => setEditing(w)}
+            onSelectAll={() => setLangSelection(lang, true)}
+            onClearAll={() => setLangSelection(lang, false)}
+          />
         )}
       </div>
 
