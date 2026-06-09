@@ -5,7 +5,8 @@ from sqlalchemy.orm import Session
 
 from app.config import ENABLE_UPLOADS
 from app.database import get_db
-from app.models import AttemptLog, Word
+from app.deps import get_current_user
+from app.models import AttemptLog, User, Word
 from app.schemas import EvaluationResponse, HealthResponse, ServerCapabilities
 from app.services import audio_service, emoji_service
 
@@ -31,6 +32,7 @@ async def evaluate_audio(
     target_word: str = Form(...),
     target_language: str = Form("en"),
     db: Session = Depends(get_db),
+    current: User = Depends(get_current_user),
 ) -> EvaluationResponse:
     if not target_word.strip():
         raise HTTPException(status_code=400, detail="target_word is required")
@@ -53,16 +55,25 @@ async def evaluate_audio(
 
     word = (
         db.query(Word)
-        .filter(Word.word == target_word, Word.language == target_language)
+        .filter(
+            Word.word == target_word,
+            Word.language == target_language,
+            Word.user_id == current.id,
+        )
         .one_or_none()
     )
     if word is None:
-        word = Word(word=target_word, language=target_language, category="general")
+        word = Word(
+            word=target_word,
+            language=target_language,
+            category="general",
+            user_id=current.id,
+        )
         db.add(word)
         db.commit()
         db.refresh(word)
 
-    db.add(AttemptLog(word_id=word.id, is_correct=is_correct))
+    db.add(AttemptLog(word_id=word.id, user_id=current.id, is_correct=is_correct))
     db.commit()
 
     if not transcript:

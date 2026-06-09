@@ -14,10 +14,23 @@ from sqlalchemy.orm import relationship
 from app.database import Base
 
 
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String(255), nullable=False, unique=True, index=True)
+    # nullable so OAuth-only users (Google) can exist without a password
+    hashed_password = Column(String(255), nullable=True)
+    # Google's "sub" claim — stable user ID. Unique, nullable.
+    google_id = Column(String(64), nullable=True, unique=True, index=True)
+    display_name = Column(String(128), nullable=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+
 class Word(Base):
     __tablename__ = "words"
     __table_args__ = (
-        UniqueConstraint("word", "language", name="uq_word_language"),
+        UniqueConstraint("word", "language", "user_id", name="uq_word_language_user"),
     )
 
     id = Column(Integer, primary_key=True, index=True)
@@ -27,6 +40,13 @@ class Word(Base):
     category = Column(String(64), nullable=False, default="general")
     image_url = Column(String(512), nullable=True)
     is_selected = Column(Boolean, nullable=False, default=False, index=True)
+    # NULL = master template seeded at startup; cloned per-user on register
+    user_id = Column(
+        Integer,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
 
     attempts = relationship(
         "AttemptLog",
@@ -43,6 +63,12 @@ class AttemptLog(Base):
         Integer,
         ForeignKey("words.id", ondelete="CASCADE"),
         nullable=False,
+        index=True,
+    )
+    user_id = Column(
+        Integer,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=True,
         index=True,
     )
     is_correct = Column(Boolean, nullable=False)

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
-import axios from "axios";
 import { motion } from "framer-motion";
+import api, { API_BASE } from "../api";
 
 const ALL_TABS = [
   { key: "emoji", label: "Emoji" },
@@ -8,16 +8,15 @@ const ALL_TABS = [
   { key: "pixabay", label: "Pixabay" },
 ];
 
-export function resolveImageUrl(apiBase, url) {
+export function resolveImageUrl(_unused, url) {
   if (!url) return null;
   if (/^https?:\/\//i.test(url)) return url;
-  const host = apiBase.replace(/\/api\/?$/, "");
+  const host = API_BASE.replace(/\/api\/?$/, "");
   return `${host}${url}`;
 }
 
 export default function EditVisualModal({
   word,
-  apiBase,
   uploadsEnabled = true,
   onClose,
   onSaved,
@@ -48,7 +47,7 @@ export default function EditVisualModal({
     setError("");
     setPxSelected(null);
     try {
-      const { data } = await axios.get(`${apiBase}/pixabay/search`, {
+      const { data } = await api.get(`/pixabay/search`, {
         params: { q: pxQuery.trim(), language: word.language },
         timeout: 10000,
       });
@@ -82,7 +81,7 @@ export default function EditVisualModal({
           setError("Pick an emoji first");
           return;
         }
-        const { data } = await axios.patch(`${apiBase}/words/${word.id}`, {
+        const { data } = await api.patch(`/words/${word.id}`, {
           emoji: value,
         });
         updated = data;
@@ -93,8 +92,8 @@ export default function EditVisualModal({
         }
         const form = new FormData();
         form.append("file", file);
-        const { data } = await axios.post(
-          `${apiBase}/words/${word.id}/upload-image`,
+        const { data } = await api.post(
+          `/words/${word.id}/upload-image`,
           form,
           {
             headers: { "Content-Type": "multipart/form-data" },
@@ -107,7 +106,7 @@ export default function EditVisualModal({
           setError("Pick a picture first");
           return;
         }
-        const { data } = await axios.patch(`${apiBase}/words/${word.id}`, {
+        const { data } = await api.patch(`/words/${word.id}`, {
           image_url: pxSelected.web_url,
         });
         updated = data;

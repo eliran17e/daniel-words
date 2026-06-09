@@ -33,6 +33,7 @@ services:
       WHISPER_COMPUTE_TYPE: int8
       HF_HOME: /root/.cache/huggingface
       PIXABAY_API_KEY: ${PIXABAY_API_KEY:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
     volumes:
       - ./backend:/app
       - whisper_models:/root/.cache/huggingface
@@ -52,6 +53,7 @@ services:
       CHOKIDAR_USEPOLLING: "true"
       WATCHPACK_POLLING: "true"
       REACT_APP_API_BASE: http://localhost:8000/api
+      REACT_APP_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
     volumes:
       - ./frontend:/app
       - /app/node_modules

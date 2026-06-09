@@ -29,6 +29,15 @@ PIXABAY_API_KEY: str = _env("PIXABAY_API_KEY", "")
 
 ENABLE_UPLOADS: bool = _bool("ENABLE_UPLOADS", True)
 
+JWT_SECRET: str = _env(
+    "JWT_SECRET",
+    "dev-only-change-in-production-please-and-make-it-long-and-random",
+)
+JWT_ALGORITHM: str = _env("JWT_ALGORITHM", "HS256")
+JWT_EXPIRE_MINUTES: int = int(_env("JWT_EXPIRE_MINUTES", "10080"))  # 7 days
+
+GOOGLE_CLIENT_ID: str = _env("GOOGLE_CLIENT_ID", "")
+
 SUPPORTED_LANGUAGES: Set[str] = {"en", "he"}
 
 

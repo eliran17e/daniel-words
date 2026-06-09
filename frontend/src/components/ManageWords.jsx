@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import axios from "axios";
 import { AnimatePresence, motion } from "framer-motion";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import api from "../api";
+import { useAuth } from "../AuthContext";
 import EditVisualModal, { resolveImageUrl } from "./EditVisualModal";
 import {
   getSavedVoiceURI,
@@ -9,10 +10,6 @@ import {
   setSavedVoiceURI,
   speakWord,
 } from "../sound";
-
-const API_BASE =
-  process.env.REACT_APP_API_BASE || "http://localhost:8000/api";
-const WORDS_URL = `${API_BASE}/words`;
 
 const LANGS = [
   { code: "en", label: "English" },
@@ -46,6 +43,13 @@ export default function ManageWords() {
   const [loadError, setLoadError] = useState("");
 
   const [lang, setLang] = useState(readPrimaryLang);
+  const { user, logout } = useAuth();
+  const nav = useNavigate();
+
+  const handleLogout = () => {
+    logout();
+    nav("/login", { replace: true });
+  };
 
   useEffect(() => {
     try {
@@ -63,8 +67,8 @@ export default function ManageWords() {
 
   useEffect(() => {
     let cancelled = false;
-    axios
-      .get(`${API_BASE}/capabilities`, { timeout: 5000 })
+    api
+      .get(`/capabilities`, { timeout: 5000 })
       .then(({ data }) => {
         if (!cancelled) setUploadsEnabled(data?.uploads_enabled !== false);
       })
@@ -91,7 +95,7 @@ export default function ManageWords() {
       )
     );
     try {
-      await axios.patch(`${WORDS_URL}/${word.id}`, {
+      await api.patch(`/words/${word.id}`, {
         is_selected: nextSelected,
       });
     } catch (err) {
@@ -117,7 +121,7 @@ export default function ManageWords() {
         )
       );
       try {
-        await axios.post(`${API_BASE}/words/bulk-select`, {
+        await api.post(`/words/bulk-select`, {
           ids: targetIds,
           is_selected: value,
         });
@@ -133,7 +137,7 @@ export default function ManageWords() {
     setLoading(true);
     setLoadError("");
     try {
-      const { data } = await axios.get(WORDS_URL, { timeout: 10000 });
+      const { data } = await api.get("/words", { timeout: 10000 });
       setWords(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error("load words failed", err);
@@ -176,8 +180,8 @@ export default function ManageWords() {
     setSubmitting(true);
     setFlash(null);
     try {
-      const { data } = await axios.post(
-        WORDS_URL,
+      const { data } = await api.post(
+        "/words",
         { word: trimmed, language: lang },
         { timeout: 15000 }
       );
@@ -202,7 +206,7 @@ export default function ManageWords() {
 
   const handleDelete = async (id) => {
     try {
-      await axios.delete(`${WORDS_URL}/${id}`, { timeout: 10000 });
+      await api.delete(`/words/${id}`, { timeout: 10000 });
       setWords((prev) => prev.filter((w) => w.id !== id));
     } catch (err) {
       console.error("delete failed", err);
@@ -217,7 +221,7 @@ export default function ManageWords() {
           <h1 className="text-2xl sm:text-3xl font-extrabold text-sky-700">
             Manage Words
           </h1>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <button
               type="button"
               onClick={swapLang}
@@ -232,8 +236,25 @@ export default function ManageWords() {
             >
               ← Play
             </Link>
+            <button
+              type="button"
+              onClick={handleLogout}
+              aria-label="Log out"
+              title={user?.email || ""}
+              className="px-4 py-2 rounded-full text-xs font-extrabold uppercase tracking-widest bg-amber-100 text-amber-700 hover:bg-amber-200 transition shadow-sm"
+            >
+              Log out
+            </button>
           </div>
         </header>
+        {user && (
+          <p className="text-xs text-slate-500 -mt-4 mb-4" dir="auto">
+            Signed in as{" "}
+            <span className="font-bold text-slate-700">
+              {user.display_name || user.email}
+            </span>
+          </p>
+        )}
 
         <form
           onSubmit={handleSubmit}
@@ -313,7 +334,6 @@ export default function ManageWords() {
           <EditVisualModal
             key={editing.id}
             word={editing}
-            apiBase={API_BASE}
             uploadsEnabled={uploadsEnabled}
             onClose={() => setEditing(null)}
             onSaved={handleSaved}
@@ -506,7 +526,7 @@ function LangSection({
 }
 
 function WordRow({ word, onToggleSelect, onDelete, onEdit }) {
-  const imgSrc = resolveImageUrl(API_BASE, word.image_url);
+  const imgSrc = resolveImageUrl(null, word.image_url);
   const selected = !!word.is_selected;
   return (
     <motion.li
