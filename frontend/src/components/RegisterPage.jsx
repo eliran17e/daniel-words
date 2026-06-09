@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../AuthContext";
 import AuthForm, { AuthField } from "./AuthForm";
+import GoogleAuthButton from "./GoogleAuthButton";
 
 export default function RegisterPage() {
   const { register } = useAuth();
@@ -80,6 +81,7 @@ export default function RegisterPage() {
         autoComplete="new-password"
         required
       />
+      <GoogleAuthButton onError={setError} />
     </AuthForm>
   );
 }
