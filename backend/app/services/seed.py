@@ -176,6 +176,7 @@ SEED_WORDS: List[SeedWord] = _build_seed_words()
 
 
 def seed_words(db: Session) -> int:
+    """Populate the master template (user_id IS NULL). Idempotent."""
     added = 0
     for entry in SEED_WORDS:
         exists = (
@@ -183,12 +184,13 @@ def seed_words(db: Session) -> int:
             .filter(
                 Word.word == entry["word"],
                 Word.language == entry["language"],
+                Word.user_id.is_(None),
             )
             .first()
         )
         if exists:
             continue
-        db.add(Word(**entry))
+        db.add(Word(user_id=None, **entry))
         added += 1
     if added:
         db.commit()
@@ -196,9 +198,14 @@ def seed_words(db: Session) -> int:
 
 
 def repair_missing_visuals(db: Session) -> int:
+    """Fix ❓ on master template rows when a new dict entry can resolve them."""
     rows = (
         db.query(Word)
-        .filter(Word.emoji == "❓", Word.image_url.is_(None))
+        .filter(
+            Word.emoji == "❓",
+            Word.image_url.is_(None),
+            Word.user_id.is_(None),
+        )
         .all()
     )
     fixed = 0
@@ -213,9 +220,10 @@ def repair_missing_visuals(db: Session) -> int:
 
 
 def backfill_counterparts(db: Session) -> int:
-    """For every word, ensure its translated counterpart exists in the other language."""
+    """For every master-template word, ensure its translated counterpart exists.
+    Operates on user_id = NULL (the seed template) only."""
     added = 0
-    sources = db.query(Word).all()
+    sources = db.query(Word).filter(Word.user_id.is_(None)).all()
     existing_keys = {(s.word, s.language) for s in sources}
     queued_keys: set = set()
 
@@ -243,9 +251,39 @@ def backfill_counterparts(db: Session) -> int:
                 emoji=target_emoji,
                 image_url=target_image,
                 category=source.category or "general",
+                user_id=None,  # stays in the master template
             )
         )
         queued_keys.add(key)
+        added += 1
+    if added:
+        db.commit()
+    return added
+
+
+def clone_seed_for_user(db: Session, user_id: int) -> int:
+    """Copy every master-template word (user_id IS NULL) to this user. Idempotent:
+    skips words the user already has (word + language match)."""
+    masters = db.query(Word).filter(Word.user_id.is_(None)).all()
+    existing_user_keys = {
+        (w.word, w.language)
+        for w in db.query(Word).filter(Word.user_id == user_id).all()
+    }
+    added = 0
+    for master in masters:
+        key = (master.word, master.language)
+        if key in existing_user_keys:
+            continue
+        db.add(Word(
+            word=master.word,
+            language=master.language,
+            emoji=master.emoji,
+            image_url=master.image_url,
+            category=master.category or "general",
+            is_selected=False,  # fresh start per user
+            user_id=user_id,
+        ))
+        existing_user_keys.add(key)
         added += 1
     if added:
         db.commit()

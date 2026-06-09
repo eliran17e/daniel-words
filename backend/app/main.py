@@ -21,19 +21,56 @@ os.makedirs(UPLOADS_PATH, exist_ok=True)
 def _ensure_word_columns() -> None:
     """Poor-man's migration for additive columns until we adopt Alembic."""
     inspector = inspect(engine)
-    if "words" not in inspector.get_table_names():
-        return
-    existing = {col["name"] for col in inspector.get_columns("words")}
-    alters: list[str] = []
-    if "is_selected" not in existing:
-        alters.append(
-            "ALTER TABLE words ADD COLUMN is_selected BOOLEAN NOT NULL DEFAULT FALSE"
-        )
-    if not alters:
-        return
-    with engine.begin() as conn:
-        for stmt in alters:
-            conn.execute(text(stmt))
+    tables = inspector.get_table_names()
+
+    if "words" in tables:
+        existing = {col["name"] for col in inspector.get_columns("words")}
+        with engine.begin() as conn:
+            if "is_selected" not in existing:
+                conn.execute(text(
+                    "ALTER TABLE words "
+                    "ADD COLUMN is_selected BOOLEAN NOT NULL DEFAULT FALSE"
+                ))
+            if "user_id" not in existing:
+                conn.execute(text(
+                    "ALTER TABLE words "
+                    "ADD COLUMN user_id INTEGER NULL "
+                    "REFERENCES users(id) ON DELETE CASCADE"
+                ))
+                conn.execute(text(
+                    "CREATE INDEX IF NOT EXISTS ix_words_user_id "
+                    "ON words(user_id)"
+                ))
+        # Constraint swap: (word, language) → (word, language, user_id)
+        constraint_names = {
+            c["name"] for c in inspector.get_unique_constraints("words")
+        }
+        if (
+            "uq_word_language" in constraint_names
+            and "uq_word_language_user" not in constraint_names
+        ):
+            with engine.begin() as conn:
+                conn.execute(text(
+                    "ALTER TABLE words DROP CONSTRAINT uq_word_language"
+                ))
+                conn.execute(text(
+                    "ALTER TABLE words ADD CONSTRAINT uq_word_language_user "
+                    "UNIQUE (word, language, user_id)"
+                ))
+
+    if "attempt_logs" in tables:
+        existing_al = {col["name"] for col in inspector.get_columns("attempt_logs")}
+        if "user_id" not in existing_al:
+            with engine.begin() as conn:
+                conn.execute(text(
+                    "ALTER TABLE attempt_logs "
+                    "ADD COLUMN user_id INTEGER NULL "
+                    "REFERENCES users(id) ON DELETE CASCADE"
+                ))
+                conn.execute(text(
+                    "CREATE INDEX IF NOT EXISTS ix_attempt_logs_user_id "
+                    "ON attempt_logs(user_id)"
+                ))
 
 
 @asynccontextmanager

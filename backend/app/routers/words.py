@@ -15,7 +15,8 @@ from sqlalchemy.orm import Session
 
 from app.config import ENABLE_UPLOADS, SUPPORTED_LANGUAGES
 from app.database import get_db
-from app.models import Word
+from app.deps import get_current_user
+from app.models import User, Word
 from app.schemas import (
     BulkSelect,
     CreateWordResponse,
@@ -43,6 +44,7 @@ def _resolve_visuals(word_text: str, language: str, explicit_emoji: Optional[str
 
 def _create_word(
     db: Session,
+    user_id: int,
     word_text: str,
     language: str,
     explicit_emoji: Optional[str] = None,
@@ -55,6 +57,7 @@ def _create_word(
         emoji=emoji,
         image_url=image_url,
         category=category or "general",
+        user_id=user_id,
     )
     db.add(word)
     try:
@@ -66,6 +69,13 @@ def _create_word(
     return word
 
 
+def _user_word_or_404(db: Session, word_id: int, user: User) -> Word:
+    word = db.get(Word, word_id)
+    if word is None or word.user_id != user.id:
+        raise HTTPException(status_code=404, detail="word not found")
+    return word
+
+
 @router.get("/words", response_model=List[WordOut])
 def list_words(
     language: Optional[str] = Query(
@@ -74,13 +84,18 @@ def list_words(
     ),
     category: Optional[str] = Query(default=None),
     db: Session = Depends(get_db),
+    current: User = Depends(get_current_user),
 ) -> List[Word]:
     if language is not None and language not in SUPPORTED_LANGUAGES:
         raise HTTPException(
             status_code=400,
             detail=f"unsupported language: {language}",
         )
-    query = db.query(Word).order_by(Word.language, Word.id)
+    query = (
+        db.query(Word)
+        .filter(Word.user_id == current.id)
+        .order_by(Word.language, Word.id)
+    )
     if language:
         query = query.filter(Word.language == language)
     if category:
@@ -93,13 +108,18 @@ def list_words(
     response_model=CreateWordResponse,
     status_code=status.HTTP_201_CREATED,
 )
-def create_word(payload: WordCreate, db: Session = Depends(get_db)) -> CreateWordResponse:
+def create_word(
+    payload: WordCreate,
+    db: Session = Depends(get_db),
+    current: User = Depends(get_current_user),
+) -> CreateWordResponse:
     word_text = payload.word.strip()
     category = (payload.category or "general").strip() or "general"
 
     try:
         primary = _create_word(
             db,
+            current.id,
             word_text,
             payload.language,
             explicit_emoji=payload.emoji,
@@ -112,19 +132,26 @@ def create_word(payload: WordCreate, db: Session = Depends(get_db)) -> CreateWor
         )
 
     counterpart_lang = "he" if payload.language == "en" else "en"
-    counterpart_text = emoji_service.translate(word_text, payload.language, counterpart_lang)
+    counterpart_text = emoji_service.translate(
+        word_text, payload.language, counterpart_lang
+    )
 
     counterpart_model: Optional[Word] = None
     if counterpart_text:
         counterpart_model = (
             db.query(Word)
-            .filter(Word.word == counterpart_text, Word.language == counterpart_lang)
+            .filter(
+                Word.word == counterpart_text,
+                Word.language == counterpart_lang,
+                Word.user_id == current.id,
+            )
             .one_or_none()
         )
         if counterpart_model is None:
             try:
                 counterpart_model = _create_word(
                     db,
+                    current.id,
                     counterpart_text,
                     counterpart_lang,
                     explicit_emoji=primary.emoji if primary.emoji != "❓" else None,
@@ -135,15 +162,19 @@ def create_word(payload: WordCreate, db: Session = Depends(get_db)) -> CreateWor
 
     return CreateWordResponse(
         word=WordOut.model_validate(primary),
-        counterpart=WordOut.model_validate(counterpart_model) if counterpart_model else None,
+        counterpart=(
+            WordOut.model_validate(counterpart_model) if counterpart_model else None
+        ),
     )
 
 
 @router.delete("/words/{word_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_word(word_id: int, db: Session = Depends(get_db)) -> Response:
-    word = db.get(Word, word_id)
-    if word is None:
-        raise HTTPException(status_code=404, detail="word not found")
+def delete_word(
+    word_id: int,
+    db: Session = Depends(get_db),
+    current: User = Depends(get_current_user),
+) -> Response:
+    word = _user_word_or_404(db, word_id, current)
     db.delete(word)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -154,18 +185,16 @@ def update_word(
     word_id: int,
     payload: WordUpdate,
     db: Session = Depends(get_db),
+    current: User = Depends(get_current_user),
 ) -> Word:
-    word = db.get(Word, word_id)
-    if word is None:
-        raise HTTPException(status_code=404, detail="word not found")
-
+    word = _user_word_or_404(db, word_id, current)
     updates = payload.model_dump(exclude_unset=True)
 
     if "emoji" in updates:
         new_emoji = (updates["emoji"] or "").strip() or None
         if new_emoji:
             word.emoji = new_emoji
-            word.image_url = None  # mutually exclusive
+            word.image_url = None
         else:
             word.emoji = None
 
@@ -189,11 +218,14 @@ def update_word(
 def bulk_select(
     payload: BulkSelect,
     db: Session = Depends(get_db),
+    current: User = Depends(get_current_user),
 ) -> List[Word]:
     if not payload.ids:
         return []
     updated = (
-        db.query(Word).filter(Word.id.in_(payload.ids)).all()
+        db.query(Word)
+        .filter(Word.id.in_(payload.ids), Word.user_id == current.id)
+        .all()
     )
     for w in updated:
         w.is_selected = payload.is_selected
@@ -206,12 +238,11 @@ async def upload_word_image(
     word_id: int,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
+    current: User = Depends(get_current_user),
 ) -> Word:
     if not ENABLE_UPLOADS:
         raise HTTPException(status_code=403, detail="uploads are disabled")
-    word = db.get(Word, word_id)
-    if word is None:
-        raise HTTPException(status_code=404, detail="word not found")
+    word = _user_word_or_404(db, word_id, current)
     try:
         url_path = await upload_service.save_image(file)
     except ValueError as e:
@@ -227,6 +258,7 @@ async def upload_word_image(
 def pixabay_search(
     q: str = Query(..., min_length=1, max_length=128),
     language: str = Query("en"),
+    _current: User = Depends(get_current_user),  # require auth to avoid abuse
 ) -> List[PixabayHit]:
     hits = image_service.search_pixabay(q, language)
     return [

@@ -30,7 +30,7 @@ class User(Base):
 class Word(Base):
     __tablename__ = "words"
     __table_args__ = (
-        UniqueConstraint("word", "language", name="uq_word_language"),
+        UniqueConstraint("word", "language", "user_id", name="uq_word_language_user"),
     )
 
     id = Column(Integer, primary_key=True, index=True)
@@ -40,6 +40,13 @@ class Word(Base):
     category = Column(String(64), nullable=False, default="general")
     image_url = Column(String(512), nullable=True)
     is_selected = Column(Boolean, nullable=False, default=False, index=True)
+    # NULL = master template seeded at startup; cloned per-user on register
+    user_id = Column(
+        Integer,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
 
     attempts = relationship(
         "AttemptLog",
@@ -56,6 +63,12 @@ class AttemptLog(Base):
         Integer,
         ForeignKey("words.id", ondelete="CASCADE"),
         nullable=False,
+        index=True,
+    )
+    user_id = Column(
+        Integer,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=True,
         index=True,
     )
     is_correct = Column(Boolean, nullable=False)

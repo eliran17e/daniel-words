@@ -7,6 +7,7 @@ from app.deps import get_current_user
 from app.models import User
 from app.schemas import Token, UserCreate, UserLogin, UserOut
 from app.services import auth_service
+from app.services.seed import clone_seed_for_user
 
 router = APIRouter(prefix="/api/auth", tags=["Authentication"])
 
@@ -32,6 +33,8 @@ def register(payload: UserCreate, db: Session = Depends(get_db)) -> Token:
             detail="email already registered",
         )
     db.refresh(user)
+    # Give the new user their own copy of the curated seed deck
+    clone_seed_for_user(db, user.id)
     return Token(
         access_token=auth_service.create_access_token(user.id),
         user=UserOut.model_validate(user),
