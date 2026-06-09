@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import axios from "axios";
 import { AnimatePresence, motion } from "framer-motion";
 import { Link } from "react-router-dom";
+import api from "../api";
 import { resolveImageUrl } from "./EditVisualModal";
 import {
   playRetry,
@@ -10,13 +10,8 @@ import {
   speakWord,
 } from "../sound";
 
-const API_BASE =
-  process.env.REACT_APP_API_BASE || "http://localhost:8000/api";
-const EVAL_URL = `${API_BASE}/evaluate-audio`;
-const WORDS_URL = `${API_BASE}/words`;
-
 function CurrentVisual({ word }) {
-  const img = resolveImageUrl(API_BASE, word.image_url);
+  const img = resolveImageUrl(null, word.image_url);
   if (word.emoji) {
     return (
       <span className="text-8xl sm:text-9xl select-none drop-shadow-md" aria-hidden>
@@ -180,8 +175,8 @@ export default function AudioRecorder() {
   useEffect(() => {
     let cancelled = false;
     setWordsLoading(true);
-    axios
-      .get(WORDS_URL, { timeout: 10000 })
+    api
+      .get("/words", { timeout: 10000 })
       .then(({ data }) => {
         if (cancelled) return;
         setAllWords(Array.isArray(data) ? data : []);
@@ -270,7 +265,7 @@ export default function AudioRecorder() {
         form.append("target_word", current.word);
         form.append("target_language", lang);
 
-        const { data } = await axios.post(EVAL_URL, form, {
+        const { data } = await api.post("/evaluate-audio", form, {
           headers: { "Content-Type": "multipart/form-data" },
           timeout: 30000,
         });
