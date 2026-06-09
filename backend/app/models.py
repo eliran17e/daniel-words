@@ -14,6 +14,19 @@ from sqlalchemy.orm import relationship
 from app.database import Base
 
 
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String(255), nullable=False, unique=True, index=True)
+    # nullable so OAuth-only users (Google) can exist without a password
+    hashed_password = Column(String(255), nullable=True)
+    # Google's "sub" claim — stable user ID. Unique, nullable.
+    google_id = Column(String(64), nullable=True, unique=True, index=True)
+    display_name = Column(String(128), nullable=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+
 class Word(Base):
     __tablename__ = "words"
     __table_args__ = (

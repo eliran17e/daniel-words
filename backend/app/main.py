@@ -9,6 +9,7 @@ from sqlalchemy import inspect, text
 from app.config import CORS_ORIGINS
 from app.database import Base, SessionLocal, engine
 from app.routers.audio import router as audio_router
+from app.routers.auth import router as auth_router
 from app.routers.words import router as words_router
 from app.services import audio_service
 from app.services.seed import backfill_counterparts, repair_missing_visuals, seed_words
@@ -57,6 +58,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth_router)
 app.include_router(audio_router)
 app.include_router(words_router)
 app.mount("/uploads", StaticFiles(directory=UPLOADS_PATH), name="uploads")
